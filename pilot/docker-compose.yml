@@ -1,0 +1,29 @@
+services:
+  omni-tools:
+    image: iib0011/omni-tools:latest
+    container_name: omni-tools
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.otools.entrypoints=web"
+      - "traefik.http.routers.otools.rule=Host(`otools.homelab.dagux.net`)"
+#      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_CREDENTIALS}"
+      - "traefik.http.middlewares.otools-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.routers.otools.middlewares=otools-https-redirect"
+      - "traefik.http.routers.otools-secure.entrypoints=websecure"
+      - "traefik.http.routers.otools-secure.rule=Host(`otools.homelab.dagux.net`)"
+#      - "traefik.http.routers.otools-secure.middlewares=traefik-auth"
+      - "traefik.http.routers.otools-secure.tls=true"
+      - "traefik.http.routers.otools-secure.tls.certresolver=cloudflare"
+#      - "traefik.http.routers.traefik-secure.tls.domains[0].main=jimsgarage.co.uk"
+#      - "traefik.http.routers.traefik-secure.tls.domains[0].sans=*.jimsgarage.co.uk"
+      - "traefik.http.routers.otools-secure.service=otools"
+      - "traefik.http.services.otools.loadbalancer.server.port=80"
+networks:
+  frontend:
+    external: true
