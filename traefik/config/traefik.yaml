@@ -1,0 +1,39 @@
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+log:
+#  level: DEBUG # --> left commented out for production. Enable (removing "#") for troubleshooting
+  level: INFO
+api:
+  dashboard: true
+  debug: true
+#  insecure: true
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entrypoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+    http:
+certificatesResolvers:
+  cloudflare:
+    acme:
+      email: "me@mail.com" # adjust as required
+      storage: /var/traefik/certs/cloudflare-acme.json
+      caServer: 'https://acme-v02.api.letsencrypt.org/directory'
+      keyType: EC256
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"  # change if needed
+          - "208.67.222.222:53"  # change if needed
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+  file:
+    filename: /config.yml # example provided gives A+ rating https://www.ssllabs.com/ssltest/ 
