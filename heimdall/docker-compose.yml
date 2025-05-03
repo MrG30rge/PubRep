@@ -1,0 +1,21 @@
+---
+version: "2.1"
+services:
+  heimdall:
+    image: linuxserver/heimdall:latest
+    container_name: heimdallv2025
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=europe/dublin
+    volumes:
+      - ./data:/config
+    ports:
+      - 89:80
+      - 6443:443
+    networks:
+      - frontend
+    restart: unless-stopped
+networks:
+  frontend:
+    external: true
