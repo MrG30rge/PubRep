@@ -1,0 +1,249 @@
+version: '3.8'
+networks:
+  net:
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.21.1.0/24"
+          gateway: "172.21.1.1"
+          ip_range: "172.21.1.128/25"
+services:
+  nginx:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-pm
+    restart: unless-stopped
+    volumes:
+      - ./nginx-pm/letsencrypt:/etc/letsencrypt
+      - ./nginx-pm/data:/data
+    networks:
+      - net
+    ports:
+      - 80:80
+      - 81:81
+      - 443:443
+  heimdall:
+    image: linuxserver/heimdall:latest
+    container_name: heimdall
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=europe/dublin
+    volumes:
+      - ./heimdall/data:/config
+    ports:
+      - 89:80
+      - 6443:443
+    networks:
+      - net
+    restart: unless-stopped
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - 9100:9100
+    networks:
+      - net
+  prometheus:
+    image: prom/prometheus:latest
+    user: "1000"
+    environment:
+      - PUID=1000
+      - PGID=1000
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - 9090:9090
+    networks:
+      - net
+  grafana:
+    image: grafana/grafana:latest
+    user: "1000"
+    container_name: grafana
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana:/var/lib/grafana
+    networks:
+      - net
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    ports:
+      - 8081:8080
+    networks:
+      - net
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    depends_on:
+      - redis
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - 6379:6379
+    networks:
+      - net
+  telegraf-ping:
+    image: telegraf:latest
+    container_name: telegraf-ping
+    hostname: telegraf-ping
+    restart: unless-stopped
+    networks:
+      - net
+    command:
+      - '--config=http://influxdb:8086/api/v2/telegrafs/0b18c5e6def1e000'
+#    volumes:
+#      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
+    environment:
+      - INFLUX_TOKEN=${FLX_TOKEN_TELEGRAF_PING}
+    depends_on:
+      - influxdb
+  telegraf-graphite:
+    image: telegraf:latest
+    container_name: telegraf-graphite
+    hostname: telegraf-graphite
+    restart: unless-stopped
+    networks:
+      - net
+    ports:
+      - "8094:8094/tcp"
+    command:
+      - '--config=http://influxdb:8086/api/v2/telegrafs/0e834794deb57000'
+#    volumes:
+#      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
+    environment:
+      - INFLUX_TOKEN=${FLX_TOKEN_TELEGRAF_GRAPHITE}
+    depends_on:
+      - influxdb
+  telegraf-logs:
+    image: telegraf:latest
+    container_name: telegraf-syslogs
+    hostname: telegraf-syslogs
+    restart: unless-stopped
+    networks:
+      - net
+    ports:
+      - "6514:6514/udp"
+      - "6514:6514/tcp"
+    command:
+      - '--config=http://influxdb:8086/api/v2/telegrafs/0bc6db3726b57000'
+#    volumes:
+#      - ./telegraf/telegraf_v2.conf:/etc/telegraf/telegraf.conf
+    environment:
+      - INFLUX_TOKEN=${FLX_TOKEN_TELEGRAF_SYSLOGS}
+    depends_on:
+      - rsyslog
+      - influxdb
+  telegraf-logs2:
+    image: telegraf:latest
+    container_name: telegraf-syslogs2
+    hostname: telegraf-syslogs2
+    restart: unless-stopped
+    networks:
+      - net
+    ports:
+      - "6515:6515/udp"
+      - "6515:6515/tcp"
+    command:
+      - '--config=http://influxdb:8086/api/v2/telegrafs/0e85879b8fb57000'
+#    volumes:
+#      - ./telegraf/telegraf_v2.conf:/etc/telegraf/telegraf.conf
+    environment:
+      - INFLUX_TOKEN=${FLX_TOKEN_TELEGRAF_SYSLOGS2}
+    depends_on:
+      - rsyslog2
+      - influxdb
+  influxdb:
+    image: influxdb:2.0
+    container_name: influxdb
+    hostname: influxdb
+    restart: unless-stopped
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=grafana
+      - DOCKER_INFLUXDB_INIT_PASSWORD={FLX_DB_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${FLX_DB_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=grafana
+    volumes:
+      - ./influxdb/data:/var/lib/influxdb2
+      - ./influxdb/config:/etc/influxdb2
+    ports
+      - 8086:8086
+    networks:
+      - net
+  rsyslog:
+    image: rsyslog/syslog_appliance_alpine:latest
+    container_name: rsyslog
+    restart: unless-stopped
+    volumes:
+      - ./rsyslog/work:/work
+      - ./rsyslog/config:/config
+      - ./rsyslog/logs:/logs
+      - ./rsyslog/rsyslog.conf:/etc/rsyslog.conf
+    ports:
+      - "5514:514/udp"
+      - "5514:514/tcp"
+    networks:
+      net:
+        ipv4_address: 172.21.1.5
+  rsyslog2:
+    image: rsyslog/syslog_appliance_alpine:latest
+    container_name: rsyslog2
+    restart: unless-stopped
+    volumes:
+      - ./rsyslog2/work:/work
+      - ./rsyslog2/config:/config
+      - ./rsyslog2/logs:/logs
+      - ./rsyslog2/rsyslog.conf:/etc/rsyslog.conf
+    ports:
+      - "6516:514/udp"
+      - "6516:514/tcp"
+    networks:
+      net:
+        ipv4_address: 172.21.1.6
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - 3001:3001
+    networks:
+      - net
+    volumes:
+      - ./uptime-kuma/_data:/app/data
+  changedetection:
+    image: ghcr.io/dgtlmoon/changedetection.io:latest
+    container_name: ChangeDetection
+    restart: unless-stopped
+    ports:
+      - 5000:5000
+    networks:
+      - net
+    volumes:
+      - ./changedetection/data:/datastore
