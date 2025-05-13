@@ -1,0 +1,45 @@
+---
+services:
+  traefik:
+    # The official v3 Traefik docker image
+    image: traefik:v3.3.5
+    # Enables the web UI and tells Traefik to listen to docker
+    container_name: traefik
+    #command: --api.insecure=true --providers.docker
+    ports:
+      # The HTTP port
+      - "80:80"
+      # The Web UI (enabled by --api.insecure=true)
+      - "8080:8080"
+      - "443:443"
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN}
+      - TRAEFIK_DASHBOARD_CREDENTIALS=${TRAEFIK_DASHBOARD_CREDENTIALS}
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config/traefik.yaml:/etc/traefik/traefik.yaml:ro
+      - ./config/config.yml:/config.yml:ro
+      - ./data/certs/:/var/traefik/certs/:rw
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.entrypoints=web"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.homelab.dagux.net`)"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_CREDENTIALS}"
+      - "traefik.http.middlewares.traefik-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.routers.traefik.middlewares=traefik-https-redirect"
+      - "traefik.http.routers.traefik-secure.entrypoints=websecure"
+      - "traefik.http.routers.traefik-secure.rule=Host(`traefik.homelab.dagux.net`)"
+      - "traefik.http.routers.traefik-secure.middlewares=traefik-auth"
+      - "traefik.http.routers.traefik-secure.tls=true"
+      - "traefik.http.routers.traefik-secure.tls.certresolver=cloudflare"
+#      - "traefik.http.routers.traefik-secure.tls.domains[0].main=company.root"
+#      - "traefik.http.routers.traefik-secure.tls.domains[0].sans=*.company.root"
+      - "traefik.http.routers.traefik-secure.service=api@internal"
+    networks:
+      - frontend
+    restart: unless-stopped
+networks:
+  frontend:
+    external: true  # or comment this line to auto create the network
